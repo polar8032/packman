@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Pac-Man Arcade Premium</title>
+    <style>
+        body { background-color: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; color: white; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        canvas { border: 4px solid #1919A6; box-shadow: 0 0 20px #0000FF; background-color: black; }
+        .stats { margin-bottom: 5px; font-size: 24px; text-transform: uppercase; width: 400px; display: flex; justify-content: space-between; }
+        .lives-container { width: 400px; display: flex; align-items: center; margin-top: 10px; height: 30px; }
+        .life-icon { width: 20px; height: 20px; background: yellow; border-radius: 50%; margin-right: 10px; clip-path: polygon(100% 20%, 50% 50%, 100% 80%, 100% 100%, 0 100%, 0 0, 100% 0); }
+        .power-timer { color: #FFFF00; font-size: 16px; height: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="stats">
+        <span>Score: <span id="score">0</span></span>
+    </div>
+    <div id="status" class="power-timer">CLICA PARA JOGAR</div>
+    
+    <canvas id="gameCanvas" width="400" height="420"></canvas>
+    
+    <div class="lives-container" id="lives">
+        <span>Vidas: </span>&nbsp;
+        <div class="life-icon"></div>
+        <div class="life-icon"></div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const statusElement = document.getElementById('status');
+    const livesContainer = document.getElementById('lives');
+
+    // --- ÁUDIO ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq, type, duration, vol = 0.1) {
+        if (audioCtx.state === 'suspended') return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // --- CONFIGURAÇÃO ---
+    const SIZE = 20;
+    let score = 0;
+    let lives = 3;
+    let powerMode = false;
+    let powerTimer = 0;
+    let mouthOpen = 0;
+    let gameStarted = false;
+
+    const initialMap = [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,3,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,3,1],
+        [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,0,1,1,1,2,2,2,2,1,1,1,0,1,1,0,1],
+        [1,0,1,1,0,1,2,2,2,2,2,2,2,2,1,0,1,1,0,1],
+        [1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
+        [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
+    let map = JSON.parse(JSON.stringify(initialMap));
+
+    let pacman = { x: 1, y: 3, dir: "right", nextDir: "right" };
+    let ghosts = [
+        { x: 9, y: 4, color: '#FF0000', homeX: 9, homeY: 4 },
+        { x: 10, y: 4, color: '#FFB8FF', homeX: 10, homeY: 4 },
+        { x: 9, y: 5, color: '#00FFFF', homeX: 9, homeY: 5 },
+        { x: 10, y: 5, color: '#FFB852', homeX: 10, homeY: 5 }
+    ];
+
+    function updateLivesUI() {
+        livesContainer.innerHTML = '<span>Vidas: </span>&nbsp;';
+        for(let i=0; i < lives - 1; i++) {
+            const div = document.createElement('div');
+            div.className = 'life-icon';
+            livesContainer.appendChild(div);
+        }
+    }
+
+    function resetPositions() {
+        pacman.x = 1; pacman.y = 3;
+        pacman.dir = "right"; pacman.nextDir = "right";
+        ghosts.forEach(g => { g.x = g.homeX; g.y = g.homeY; });
+        powerMode = false;
+        powerTimer = 0;
+    }
+
+    function drawMap() {
+        let dotsLeft = 0;
+        for(let y=0; y<map.length; y++) {
+            for(let x=0; x<map[y].length; x++) {
+                if(map[y][x] === 1) {
+                    ctx.fillStyle = '#1919A6';
+                    ctx.fillRect(x*SIZE, y*SIZE, SIZE, SIZE);
+                } else if(map[y][x] === 0) {
+                    ctx.fillStyle = '#FFB8AE';
+                    ctx.beginPath(); ctx.arc(x*SIZE + SIZE/2, y*SIZE + SIZE/2, 2, 0, Math.PI*2); ctx.fill();
+                    dotsLeft++;
+                } else if(map[y][x] === 3) {
+                    ctx.fillStyle = '#FFB8AE';
+                    ctx.beginPath(); ctx.arc(x*SIZE + SIZE/2, y*SIZE + SIZE/2, 6, 0, Math.PI*2); ctx.fill();
+                    dotsLeft++;
+                }
+            }
+        }
+        if(dotsLeft === 0) { alert("VITÓRIA TOTAL!"); location.reload(); }
+    }
+
+    function drawPacman() {
+        ctx.fillStyle = '#FFFF00';
+        let centerX = pacman.x * SIZE + SIZE/2;
+        let centerY = pacman.y * SIZE + SIZE/2;
+        let rotation = 0;
+        if(pacman.dir === "left") rotation = Math.PI;
+        else if(pacman.dir === "up") rotation = -Math.PI/2;
+        else if(pacman.dir === "down") rotation = Math.PI/2;
+
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        let angle = Math.abs(Math.sin(mouthOpen)) * 0.2;
+        ctx.arc(centerX, centerY, SIZE/1.4, rotation + angle * Math.PI, rotation + (2 - angle) * Math.PI);
+        ctx.fill();
+        mouthOpen += 0.4;
+    }
+
+    function drawGhosts() {
+        ghosts.forEach(g => {
+            ctx.fillStyle = powerMode ? "#2121FF" : g.color;
+            if (powerMode && powerTimer < 20 && powerTimer % 2 === 0) ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.arc(g.x * SIZE + SIZE/2, g.y * SIZE + SIZE/2, SIZE/1.5, Math.PI, 0);
+            ctx.lineTo(g.x * SIZE + SIZE/2 + SIZE/1.5, g.y * SIZE + SIZE);
+            ctx.lineTo(g.x * SIZE + SIZE/2 - SIZE/1.5, g.y * SIZE + SIZE);
+            ctx.fill();
+        });
+    }
+
+    function movePacman() {
+        let nx = pacman.x, ny = pacman.y;
+        if(pacman.nextDir === "up") ny--;
+        else if(pacman.nextDir === "down") ny++;
+        else if(pacman.nextDir === "left") nx--;
+        else if(pacman.nextDir === "right") nx++;
+
+        if(map[ny] && map[ny][nx] !== 1) {
+            pacman.x = nx; pacman.y = ny;
+            pacman.dir = pacman.nextDir;
+        } else {
+            nx = pacman.x; ny = pacman.y;
+            if(pacman.dir === "up") ny--;
+            else if(pacman.dir === "down") ny++;
+            else if(pacman.dir === "left") nx--;
+            else if(pacman.dir === "right") nx++;
+            if(map[ny] && map[ny][nx] !== 1) { pacman.x = nx; pacman.y = ny; }
+        }
+
+        if(map[pacman.y][pacman.x] === 0) {
+            map[pacman.y][pacman.x] = 2; score += 10;
+            playTone(500, 'square', 0.08, 0.03);
+        } else if(map[pacman.y][pacman.x] === 3) {
+            map[pacman.y][pacman.x] = 2; score += 50;
+            powerMode = true; powerTimer = 60;
+            playTone(200, 'sawtooth', 0.3);
+        }
+        scoreElement.innerText = score;
+    }
+
+    function moveGhosts() {
+        ghosts.forEach(g => {
+            const dirs = [{x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0}];
+            const move = dirs[Math.floor(Math.random() * dirs.length)];
+            if(map[g.y + move.y] && map[g.y + move.y][g.x + move.x] !== 1) {
+                g.x += move.x; g.y += move.y;
+            }
+            
+            if(g.x === pacman.x && g.y === pacman.y) {
+                if(powerMode) {
+                    score += 200; playTone(800, 'square', 0.2);
+                    g.x = g.homeX; g.y = g.homeY;
+                } else {
+                    lives--;
+                    updateLivesUI();
+                    playTone(150, 'triangle', 0.5);
+                    if(lives <= 0) {
+                        alert("GAME OVER! Score: " + score);
+                        location.reload();
+                    } else {
+                        resetPositions();
+                    }
+                }
+            }
+        });
+    }
+
+    function update() {
+        if(!gameStarted) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if(powerMode) {
+            powerTimer--;
+            statusElement.innerText = "MODO PODER: " + powerTimer;
+            if(powerTimer <= 0) { powerMode = false; statusElement.innerText = ""; }
+        }
+        drawMap(); drawPacman(); drawGhosts();
+        movePacman();
+        if(!powerMode || powerTimer % 2 === 0) moveGhosts();
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (!gameStarted) { audioCtx.resume(); gameStarted = true; statusElement.innerText = ""; }
+        if(e.key === "ArrowUp") pacman.nextDir = "up";
+        if(e.key === "ArrowDown") pacman.nextDir = "down";
+        if(e.key === "ArrowLeft") pacman.nextDir = "left";
+        if(e.key === "ArrowRight") pacman.nextDir = "right";
+    });
+
+    setInterval(update, 150);
+    updateLivesUI();
+</script>
+</body>
+</html>
