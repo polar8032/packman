@@ -3,33 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pac-Man Mobile Premium</title>
+    <title>Pac-Man Mobile Sound Fix</title>
     <style>
         body { 
             background-color: #111; 
             display: flex; 
             flex-direction: column; 
             align-items: center; 
-            justify-content: flex-start; /* Mudado para começar do topo */
+            justify-content: flex-start;
             height: 100vh; 
             margin: 0; 
             color: white; 
             font-family: 'Courier New', Courier, monospace; 
-            overflow: hidden; /* Impede scroll na página */
-            touch-action: none; /* Impede gestos do navegador */
+            overflow: hidden; 
+            touch-action: none;
             padding-top: 20px;
         }
         
-        /* O Canvas agora adapta-se à largura do telemóvel */
         canvas { 
             border: 3px solid #1919A6; 
             box-shadow: 0 0 15px rgba(25, 25, 166, 0.6); 
             background-color: black; 
             display: block;
-            width: 95vw;  /* Ocupa 95% da largura do ecrã */
-            max-width: 500px; /* Limite para não ficar gigante em tablets */
-            height: auto; /* Mantém a proporção */
-            image-rendering: pixelated; /* Mantém o aspeto retro nítido */
+            width: 95vw;
+            max-width: 500px; 
+            height: auto; 
+            image-rendering: pixelated;
         }
 
         .ui-panel { 
@@ -38,7 +37,7 @@
             display: flex; 
             justify-content: space-between; 
             margin-bottom: 10px;
-            font-size: 1.2rem; /* Texto maior para telemóvel */
+            font-size: 1.2rem;
             font-weight: bold;
             text-shadow: 2px 2px #000;
         }
@@ -64,7 +63,7 @@
         #start-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.95);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -74,25 +73,23 @@
         }
 
         button {
-            padding: 20px 40px; /* Botão maior para toque */
+            padding: 25px 50px;
             font-size: 24px;
             background: #FFCC00;
-            border: none;
-            border-radius: 10px;
+            color: black;
+            border: 4px solid white;
+            border-radius: 15px;
             cursor: pointer;
             font-family: inherit;
-            font-weight: bold;
+            font-weight: 900;
             text-transform: uppercase;
-            box-shadow: 0 0 20px #FFCC00;
-            margin-top: 20px;
+            box-shadow: 0 0 30px #FFCC00;
+            margin-top: 30px;
+            -webkit-tap-highlight-color: transparent;
         }
         
         button:active { transform: scale(0.95); background: #e6b800; }
         
-        .instructions { color: #ccc; margin-top: 10px; font-size: 14px; }
-        .high-score { color: #FFB8FF; }
-        
-        /* Indicação visual de swipe */
         .swipe-hint {
             margin-top: 10px;
             font-size: 12px;
@@ -105,19 +102,19 @@
 
     <div id="start-overlay">
         <h1 style="color:yellow; text-shadow: 4px 4px #1919A6; font-size: 40px; margin: 0;">PAC-MAN</h1>
-        <p style="font-size: 18px; margin-top:5px;">MOBILE EDITION</p>
+        <p style="font-size: 16px; margin-top:5px; color:#ddd;">MOBILE EDITION</p>
         
-        <div style="margin: 20px 0;">
-            <p>Desliza o dedo para mover</p>
+        <div style="margin: 30px 0;">
+            <p style="margin-bottom:10px;">Ativa o som do telemóvel!</p>
             <div style="font-size: 30px;">⬆️ ⬇️ ⬅️ ➡️</div>
         </div>
 
-        <button onclick="startGame()">JOGAR</button>
+        <button id="startBtn">JOGAR 🔊</button>
     </div>
 
     <div class="ui-panel">
         <span>SCORE: <span id="score" style="color:white">0</span></span>
-        <span class="high-score">TOP: <span id="highScore">0</span></span>
+        <span class="high-score" style="color:#FFB8FF">TOP: <span id="highScore">0</span></span>
     </div>
     
     <div id="status" style="height:20px; color: cyan; font-weight: bold; margin-bottom: 5px; text-align:center;"></div>
@@ -125,7 +122,7 @@
     <canvas id="gameCanvas" width="400" height="420"></canvas>
     
     <div class="lives-container" id="lives"></div>
-    <div class="swipe-hint">Desliza em qualquer lugar do ecrã</div>
+    <div class="swipe-hint">Desliza para mover</div>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
@@ -135,34 +132,67 @@
     const statusElement = document.getElementById('status');
     const livesContainer = document.getElementById('lives');
     const overlay = document.getElementById('start-overlay');
+    const startBtn = document.getElementById('startBtn');
 
-    // --- VARIÁVEIS DE CONTROLO DE TOQUE ---
+    // --- SISTEMA DE ÁUDIO ROBUSTO (IOS FIX) ---
+    // Usamos webkitAudioContext para compatibilidade com Safaris antigos
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = new AudioContext();
+
+    // Função para desbloquear áudio em iOS/Android
+    function unlockAudio() {
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        // Toca um buffer silencioso para "aquecer" o motor de som
+        const buffer = audioCtx.createBuffer(1, 1, 22050);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start(0);
+    }
+
+    function playTone(freq, type, duration, vol = 0.1) {
+        // Tenta resumir sempre que tentamos tocar um som
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        try {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            
+            // Volume envelope
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        } catch(e) {
+            console.error("Erro de áudio:", e);
+        }
+    }
+
+    function playStartSound() {
+        // Sequência rápida de início
+        setTimeout(() => playTone(400, 'square', 0.1, 0.2), 0);
+        setTimeout(() => playTone(600, 'square', 0.1, 0.2), 150);
+        setTimeout(() => playTone(800, 'square', 0.2, 0.2), 300);
+    }
+
+    // --- CONTROLO DE TOQUE ---
     let touchStartX = 0;
     let touchStartY = 0;
 
-    // --- CARREGAR HIGH SCORE ---
+    // --- CONFIGURAÇÃO ---
     let savedHigh = localStorage.getItem('pacman_highscore') || 0;
     highScoreElement.innerText = savedHigh;
 
-    // --- ÁUDIO ---
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    function playTone(freq, type, duration, vol = 0.1) {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + duration);
-    }
-
-    // --- CONFIGURAÇÃO ---
-    const SIZE = 20; // Mantemos a lógica interna a 20px, o CSS trata do zoom
+    const SIZE = 20; 
     let score = 0;
     let lives = 3;
     let powerMode = false;
@@ -194,17 +224,25 @@
         { x: 10, y: 5, color: '#FFB852', homeX: 10, homeY: 5, type: 'random' }
     ];
 
-    function startGame() {
-        overlay.style.display = 'none';
-        // Desbloquear áudio no primeiro toque
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+    // --- INICIAR JOGO ---
+    startBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        unlockAudio();
+        playStartSound();
         
+        overlay.style.display = 'none';
         if (!gameRunning) {
             gameRunning = true;
             resetGame();
             gameLoopInterval = setInterval(update, 140); 
         }
-    }
+    });
+
+    // Evento TouchStart no botão para resposta mais rápida no iOS
+    startBtn.addEventListener('touchstart', (e) => {
+        unlockAudio();
+    }, {passive: true});
+
 
     function resetGame() {
         score = 0;
@@ -234,7 +272,6 @@
         statusElement.innerText = "";
     }
 
-    // --- LÓGICA DE DESENHO E JOGO ---
     function drawMap() {
         let dotsLeft = 0;
         for(let y=0; y<map.length; y++) {
@@ -423,10 +460,12 @@
         drawPacman(); drawGhosts();
     }
 
-    // --- DETEÇÃO DE SWIPE (GESTOR DE TOQUE) ---
+    // --- DETEÇÃO DE SWIPE ---
     document.addEventListener('touchstart', e => {
         touchStartX = e.changedTouches[0].screenX;
         touchStartY = e.changedTouches[0].screenY;
+        // Tenta desbloquear áudio no primeiro toque em qualquer lado
+        if (audioCtx.state === 'suspended') unlockAudio();
     }, {passive: false});
 
     document.addEventListener('touchend', e => {
@@ -435,7 +474,6 @@
         handleSwipe(touchEndX, touchEndY);
     }, {passive: false});
 
-    // Impede scroll ao arrastar o dedo
     document.addEventListener('touchmove', e => {
         e.preventDefault(); 
     }, {passive: false});
@@ -444,21 +482,17 @@
         let diffX = endX - touchStartX;
         let diffY = endY - touchStartY;
 
-        // Limiar mínimo para considerar movimento (evita toques acidentais)
         if (Math.abs(diffX) < 20 && Math.abs(diffY) < 20) return;
 
         if (Math.abs(diffX) > Math.abs(diffY)) {
-            // Movimento Horizontal
             if (diffX > 0) pacman.nextDir = "right";
             else pacman.nextDir = "left";
         } else {
-            // Movimento Vertical
             if (diffY > 0) pacman.nextDir = "down";
             else pacman.nextDir = "up";
         }
     }
 
-    // Suporte para teclado (caso uses teclado bluetooth no telemóvel)
     window.addEventListener('keydown', (e) => {
         if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
             e.preventDefault();
