@@ -2,93 +2,130 @@
 <html lang="pt-pt">
 <head>
     <meta charset="UTF-8">
-    <title>Pac-Man Arcade Premium v2.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pac-Man Mobile Premium</title>
     <style>
         body { 
             background-color: #111; 
             display: flex; 
             flex-direction: column; 
             align-items: center; 
-            justify-content: center; 
+            justify-content: flex-start; /* Mudado para começar do topo */
             height: 100vh; 
             margin: 0; 
             color: white; 
             font-family: 'Courier New', Courier, monospace; 
-            overflow: hidden; /* Impede scroll */
+            overflow: hidden; /* Impede scroll na página */
+            touch-action: none; /* Impede gestos do navegador */
+            padding-top: 20px;
         }
+        
+        /* O Canvas agora adapta-se à largura do telemóvel */
         canvas { 
-            border: 4px solid #1919A6; 
-            box-shadow: 0 0 30px rgba(25, 25, 166, 0.6); 
+            border: 3px solid #1919A6; 
+            box-shadow: 0 0 15px rgba(25, 25, 166, 0.6); 
             background-color: black; 
             display: block;
+            width: 95vw;  /* Ocupa 95% da largura do ecrã */
+            max-width: 500px; /* Limite para não ficar gigante em tablets */
+            height: auto; /* Mantém a proporção */
+            image-rendering: pixelated; /* Mantém o aspeto retro nítido */
         }
+
         .ui-panel { 
-            width: 400px; 
+            width: 95vw; 
+            max-width: 500px;
             display: flex; 
             justify-content: space-between; 
             margin-bottom: 10px;
-            font-size: 20px;
+            font-size: 1.2rem; /* Texto maior para telemóvel */
             font-weight: bold;
             text-shadow: 2px 2px #000;
         }
+
         .lives-container { 
-            width: 400px; 
+            width: 95vw; 
+            max-width: 500px;
             display: flex; 
             align-items: center; 
-            margin-top: 10px; 
+            margin-top: 15px; 
             height: 30px; 
         }
+
         .life-icon { 
-            width: 20px; 
-            height: 20px; 
+            width: 25px; 
+            height: 25px; 
             background: yellow; 
             border-radius: 50%; 
             margin-right: 10px; 
             clip-path: polygon(100% 20%, 50% 50%, 100% 80%, 100% 100%, 0 100%, 0 0, 100% 0); 
         }
+
         #start-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
+            background: rgba(0,0,0,0.9);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             z-index: 10;
+            text-align: center;
         }
+
         button {
-            padding: 15px 30px;
+            padding: 20px 40px; /* Botão maior para toque */
             font-size: 24px;
             background: #FFCC00;
             border: none;
+            border-radius: 10px;
             cursor: pointer;
             font-family: inherit;
             font-weight: bold;
             text-transform: uppercase;
-            box-shadow: 0 0 15px #FFCC00;
+            box-shadow: 0 0 20px #FFCC00;
+            margin-top: 20px;
         }
-        button:hover { background: #fff; transform: scale(1.1); }
+        
+        button:active { transform: scale(0.95); background: #e6b800; }
+        
+        .instructions { color: #ccc; margin-top: 10px; font-size: 14px; }
         .high-score { color: #FFB8FF; }
+        
+        /* Indicação visual de swipe */
+        .swipe-hint {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #555;
+            text-transform: uppercase;
+        }
     </style>
 </head>
 <body>
 
     <div id="start-overlay">
-        <h1 style="color:yellow; text-shadow: 4px 4px #1919A6; font-size: 50px; margin-bottom: 10px;">PAC-MAN</h1>
-        <p style="margin-bottom: 30px;">Usa as SETAS para mover</p>
-        <button onclick="startGame()">INICIAR JOGO</button>
+        <h1 style="color:yellow; text-shadow: 4px 4px #1919A6; font-size: 40px; margin: 0;">PAC-MAN</h1>
+        <p style="font-size: 18px; margin-top:5px;">MOBILE EDITION</p>
+        
+        <div style="margin: 20px 0;">
+            <p>Desliza o dedo para mover</p>
+            <div style="font-size: 30px;">⬆️ ⬇️ ⬅️ ➡️</div>
+        </div>
+
+        <button onclick="startGame()">JOGAR</button>
     </div>
 
     <div class="ui-panel">
         <span>SCORE: <span id="score" style="color:white">0</span></span>
-        <span class="high-score">HIGH: <span id="highScore">0</span></span>
+        <span class="high-score">TOP: <span id="highScore">0</span></span>
     </div>
     
-    <div id="status" style="height:20px; color: cyan; font-weight: bold; margin-bottom: 5px;"></div>
+    <div id="status" style="height:20px; color: cyan; font-weight: bold; margin-bottom: 5px; text-align:center;"></div>
     
     <canvas id="gameCanvas" width="400" height="420"></canvas>
     
     <div class="lives-container" id="lives"></div>
+    <div class="swipe-hint">Desliza em qualquer lugar do ecrã</div>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
@@ -99,11 +136,15 @@
     const livesContainer = document.getElementById('lives');
     const overlay = document.getElementById('start-overlay');
 
+    // --- VARIÁVEIS DE CONTROLO DE TOQUE ---
+    let touchStartX = 0;
+    let touchStartY = 0;
+
     // --- CARREGAR HIGH SCORE ---
     let savedHigh = localStorage.getItem('pacman_highscore') || 0;
     highScoreElement.innerText = savedHigh;
 
-    // --- ÁUDIO (Melhorado para evitar erros) ---
+    // --- ÁUDIO ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     
     function playTone(freq, type, duration, vol = 0.1) {
@@ -121,7 +162,7 @@
     }
 
     // --- CONFIGURAÇÃO ---
-    const SIZE = 20;
+    const SIZE = 20; // Mantemos a lógica interna a 20px, o CSS trata do zoom
     let score = 0;
     let lives = 3;
     let powerMode = false;
@@ -136,7 +177,7 @@
         [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
         [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
         [1,0,1,1,0,1,1,1,2,2,2,2,1,1,1,0,1,1,0,1],
-        [0,0,1,1,0,1,2,2,2,2,2,2,2,2,1,0,1,1,0,0], // Linha do Túnel (Extremidades abertas)
+        [0,0,1,1,0,1,2,2,2,2,2,2,2,2,1,0,1,1,0,0], 
         [1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,0,1],
         [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
         [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
@@ -144,12 +185,10 @@
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
     ];
     
-    // Clonagem profunda do mapa
     let map = JSON.parse(JSON.stringify(initialMap));
-
     let pacman = { x: 1, y: 3, dir: "right", nextDir: "right" };
     let ghosts = [
-        { x: 9, y: 4, color: '#FF0000', homeX: 9, homeY: 4, type: 'chaser' }, // Blinky (Perseguidor)
+        { x: 9, y: 4, color: '#FF0000', homeX: 9, homeY: 4, type: 'chaser' }, 
         { x: 10, y: 4, color: '#FFB8FF', homeX: 10, homeY: 4, type: 'random' },
         { x: 9, y: 5, color: '#00FFFF', homeX: 9, homeY: 5, type: 'random' },
         { x: 10, y: 5, color: '#FFB852', homeX: 10, homeY: 5, type: 'random' }
@@ -157,11 +196,13 @@
 
     function startGame() {
         overlay.style.display = 'none';
-        audioCtx.resume();
+        // Desbloquear áudio no primeiro toque
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
         if (!gameRunning) {
             gameRunning = true;
             resetGame();
-            gameLoopInterval = setInterval(update, 130); // Ligeiramente mais rápido
+            gameLoopInterval = setInterval(update, 140); 
         }
     }
 
@@ -193,6 +234,7 @@
         statusElement.innerText = "";
     }
 
+    // --- LÓGICA DE DESENHO E JOGO ---
     function drawMap() {
         let dotsLeft = 0;
         for(let y=0; y<map.length; y++) {
@@ -200,8 +242,8 @@
                 if(map[y][x] === 1) {
                     ctx.fillStyle = '#1919A6';
                     ctx.fillRect(x*SIZE, y*SIZE, SIZE, SIZE);
-                    // Efeito visual na parede
                     ctx.strokeStyle = '#0000FF';
+                    ctx.lineWidth = 1;
                     ctx.strokeRect(x*SIZE+2, y*SIZE+2, SIZE-4, SIZE-4);
                 } else if(map[y][x] === 0) {
                     ctx.fillStyle = '#FFB8AE';
@@ -209,7 +251,7 @@
                     dotsLeft++;
                 } else if(map[y][x] === 3) {
                     ctx.fillStyle = '#FFB8AE';
-                    if (Date.now() % 400 < 200) { // Piscar Power Pellet
+                    if (Date.now() % 400 < 200) { 
                         ctx.beginPath(); ctx.arc(x*SIZE + SIZE/2, y*SIZE + SIZE/2, 6, 0, Math.PI*2); ctx.fill();
                     }
                     dotsLeft++;
@@ -218,7 +260,7 @@
         }
         if(dotsLeft === 0) { 
             playTone(600, 'sine', 1);
-            alert("NÍVEL COMPLETADO! +1000 Pts"); 
+            alert("NÍVEL COMPLETADO!"); 
             score += 1000;
             resetPositions();
             map = JSON.parse(JSON.stringify(initialMap));
@@ -245,23 +287,16 @@
     function drawGhosts() {
         ghosts.forEach(g => {
             ctx.fillStyle = powerMode ? "#2121FF" : g.color;
-            if (powerMode && powerTimer < 25 && powerTimer % 2 === 0) ctx.fillStyle = "white"; // Piscar a acabar
+            if (powerMode && powerTimer < 25 && powerTimer % 2 === 0) ctx.fillStyle = "white"; 
             
             let gx = g.x * SIZE;
             let gy = g.y * SIZE;
-
             ctx.beginPath();
             ctx.arc(gx + SIZE/2, gy + SIZE/2, SIZE/1.5, Math.PI, 0);
             ctx.lineTo(gx + SIZE, gy + SIZE);
-            // Pés do fantasma
-            ctx.lineTo(gx + SIZE*0.8, gy + SIZE*0.8);
-            ctx.lineTo(gx + SIZE*0.6, gy + SIZE);
-            ctx.lineTo(gx + SIZE*0.4, gy + SIZE*0.8);
-            ctx.lineTo(gx + SIZE*0.2, gy + SIZE);
             ctx.lineTo(gx, gy + SIZE);
             ctx.fill();
             
-            // Olhos
             if (!powerMode) {
                 ctx.fillStyle = "white";
                 ctx.beginPath(); ctx.arc(gx + SIZE*0.35, gy + SIZE*0.4, 3, 0, Math.PI*2); ctx.fill();
@@ -274,14 +309,13 @@
     }
 
     function movePacman() {
-        // Tenta mover na direção desejada (buffer)
         let nx = pacman.x, ny = pacman.y;
         if(pacman.nextDir === "up") ny--;
         else if(pacman.nextDir === "down") ny++;
         else if(pacman.nextDir === "left") nx--;
         else if(pacman.nextDir === "right") nx++;
 
-        // Verifica Túnel
+        // Túnel
         if (nx < 0) nx = map[0].length - 1;
         if (nx >= map[0].length) nx = 0;
 
@@ -289,21 +323,18 @@
             pacman.x = nx; pacman.y = ny;
             pacman.dir = pacman.nextDir;
         } else {
-            // Se bloqueado, tenta continuar na direção atual
             nx = pacman.x; ny = pacman.y;
             if(pacman.dir === "up") ny--;
             else if(pacman.dir === "down") ny++;
             else if(pacman.dir === "left") nx--;
             else if(pacman.dir === "right") nx++;
 
-            // Verifica Túnel para direção atual
             if (nx < 0) nx = map[0].length - 1;
             if (nx >= map[0].length) nx = 0;
 
             if(map[ny] && map[ny][nx] !== 1) { pacman.x = nx; pacman.y = ny; }
         }
 
-        // Comer
         if(map[pacman.y][pacman.x] === 0) {
             map[pacman.y][pacman.x] = 2; score += 10;
             playTone(300 + (score%100), 'square', 0.05, 0.05);
@@ -319,20 +350,13 @@
         ghosts.forEach(g => {
             let possibleMoves = [];
             const dirs = [{x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0}];
-            
             dirs.forEach(d => {
-                let checkX = g.x + d.x;
-                let checkY = g.y + d.y;
-                if(map[checkY] && map[checkY][checkX] !== 1) {
-                    possibleMoves.push(d);
-                }
+                if(map[g.y + d.y] && map[g.y + d.y][g.x + d.x] !== 1) possibleMoves.push(d);
             });
 
             if (possibleMoves.length > 0) {
                 let move;
-                // IA Simples: Vermelho tenta aproximar-se se não estiver em PowerMode
                 if(g.type === 'chaser' && !powerMode && Math.random() > 0.4) {
-                    // Ordena movimentos pela distância ao Pacman
                     possibleMoves.sort((a, b) => {
                         let distA = Math.abs((g.x + a.x) - pacman.x) + Math.abs((g.y + a.y) - pacman.y);
                         let distB = Math.abs((g.x + b.x) - pacman.x) + Math.abs((g.y + b.y) - pacman.y);
@@ -342,12 +366,9 @@
                 } else {
                     move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
                 }
-                
-                g.x += move.x; 
-                g.y += move.y;
+                g.x += move.x; g.y += move.y;
             }
 
-            // Colisão
             if(g.x === pacman.x && g.y === pacman.y) {
                 if(powerMode) {
                     score += 200; 
@@ -363,13 +384,12 @@
     function handleDeath() {
         lives--;
         updateLivesUI();
-        playTone(100, 'sawtooth', 0.8);
-        playTone(80, 'sawtooth', 0.8); // Som de morte mais grave
+        playTone(100, 'sawtooth', 0.5);
         
         if(lives <= 0) {
             if (score > savedHigh) {
                 localStorage.setItem('pacman_highscore', score);
-                alert("NOVO RECORDE! Score: " + score);
+                alert("NOVO RECORDE: " + score);
             } else {
                 alert("GAME OVER! Score: " + score);
             }
@@ -385,15 +405,13 @@
         
         if(powerMode) {
             powerTimer--;
-            statusElement.innerText = "!!! PODER ATIVO: " + powerTimer + " !!!";
+            statusElement.innerText = "!!! PODER ATIVO !!!";
             if(powerTimer <= 0) { powerMode = false; statusElement.innerText = ""; }
         }
 
         drawMap();
         movePacman();
-        // Fantasmas movem-se mais devagar que o pacman em alguns ciclos para dar chance
         if(!powerMode || powerTimer % 2 === 0) {
-             // Verificação extra de colisão ANTES de mover (caso pacman vá contra eles)
             ghosts.forEach(g => {
                 if(g.x === pacman.x && g.y === pacman.y) {
                    if(powerMode) { g.x = g.homeX; g.y = g.homeY; score+=200; }
@@ -402,14 +420,48 @@
             });
             moveGhosts();
         }
-        
-        drawPacman();
-        drawGhosts();
+        drawPacman(); drawGhosts();
     }
 
+    // --- DETEÇÃO DE SWIPE (GESTOR DE TOQUE) ---
+    document.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, {passive: false});
+
+    document.addEventListener('touchend', e => {
+        let touchEndX = e.changedTouches[0].screenX;
+        let touchEndY = e.changedTouches[0].screenY;
+        handleSwipe(touchEndX, touchEndY);
+    }, {passive: false});
+
+    // Impede scroll ao arrastar o dedo
+    document.addEventListener('touchmove', e => {
+        e.preventDefault(); 
+    }, {passive: false});
+
+    function handleSwipe(endX, endY) {
+        let diffX = endX - touchStartX;
+        let diffY = endY - touchStartY;
+
+        // Limiar mínimo para considerar movimento (evita toques acidentais)
+        if (Math.abs(diffX) < 20 && Math.abs(diffY) < 20) return;
+
+        if (Math.abs(diffX) > Math.abs(diffY)) {
+            // Movimento Horizontal
+            if (diffX > 0) pacman.nextDir = "right";
+            else pacman.nextDir = "left";
+        } else {
+            // Movimento Vertical
+            if (diffY > 0) pacman.nextDir = "down";
+            else pacman.nextDir = "up";
+        }
+    }
+
+    // Suporte para teclado (caso uses teclado bluetooth no telemóvel)
     window.addEventListener('keydown', (e) => {
         if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
-            e.preventDefault(); // Impede o scroll da página
+            e.preventDefault();
         }
         if(e.key === "ArrowUp") pacman.nextDir = "up";
         if(e.key === "ArrowDown") pacman.nextDir = "down";
